@@ -24,6 +24,7 @@
         "email": "user1@example.com",
         "firstName": "User",
         "lastName": "One",
+        "id": "12",
         "credentials": [
           {
             "type": "password",
@@ -39,6 +40,7 @@
         "email": "user2@example.com",
         "firstName": "User",
         "lastName": "Two",
+        "id": "46",
         "credentials": [
           {
             "type": "password",
@@ -54,6 +56,7 @@
         "email": "admin1@example.com",
         "firstName": "Admin",
         "lastName": "One",
+        "id": "51",
         "credentials": [
           {
             "type": "password",
@@ -69,6 +72,7 @@
         "email": "prothetic1@example.com",
         "firstName": "Prothetic",
         "lastName": "One",
+        "id": "67",
         "credentials": [
           {
             "type": "password",
@@ -84,6 +88,7 @@
         "email": "prothetic2@example.com",
         "firstName": "Prothetic",
         "lastName": "Two",
+        "id": "76",
         "credentials": [
           {
             "type": "password",
@@ -99,6 +104,7 @@
         "email": "prothetic3@example.com",
         "firstName": "Prothetic",
         "lastName": "Three",
+        "id": "92",
         "credentials": [
           {
             "type": "password",
@@ -116,18 +122,7 @@
         "publicClient": true,
         "redirectUris": ["http://localhost:3000/*"],
         "webOrigins": ["http://localhost:3000"],
-        "directAccessGrantsEnabled": false,
-        "standardFlowEnabled": true,
-        "implicitFlowEnabled": false,
-        "serviceAccountsEnabled": false,
-        "attributes": {
-          "pkce.code.challenge.method": "S256",
-          "require.pkbce": "true",
-          "oauth2.device.authorization.grant.enabled": "false",
-          "backchannel.logout.session.required": "true",
-          "client.secret.creation.time": "0",
-          "use.refresh.tokens": "true"
-        }
+        "directAccessGrantsEnabled": true
       },
       {
         "clientId": "reports-api",
