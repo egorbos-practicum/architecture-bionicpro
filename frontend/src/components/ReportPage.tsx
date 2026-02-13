@@ -22,12 +22,47 @@ const ReportPage: React.FC = () => {
         }
       });
 
+      const contentDisposition = response.headers.get('Content-Disposition');
+
+      if (!contentDisposition) {
+        throw new Error('Content-Disposition header is missing or not exposed.');
+      }
+
+      const fileName = getFilenameFromContentDisposition(contentDisposition) ?? 'report.csv';
+      let fileData = await response.blob();
+      saveToDisk(fileData, fileName);
       
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
+  };
+
+  const getFilenameFromContentDisposition = (contentDisposition: string) =>  {
+    const utf8FilenameMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8FilenameMatch) {
+      return decodeURIComponent(utf8FilenameMatch[1]);
+    }
+
+    const filenameMatch = contentDisposition.match(/filename=(["']?)([^;"']+)\1/i);
+    if (filenameMatch) {
+      return filenameMatch[2].trim();
+    }
+
+    return null;
+  }
+
+  const saveToDisk = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   if (!initialized) {

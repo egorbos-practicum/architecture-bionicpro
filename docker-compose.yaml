@@ -1,16 +1,30 @@
-version: '3.8'
-
 services:
-  keycloak_db:
-    image: postgres:14
-    environment:
-      POSTGRES_DB: keycloak_db
-      POSTGRES_USER: keycloak_user
-      POSTGRES_PASSWORD: keycloak_password
-    volumes:
-      - ./postgres-keycloak-data:/var/lib/postgresql/data
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - REACT_APP_API_URL=http://localhost:5050
+        - REACT_APP_KEYCLOAK_URL=http://localhost:8080
+        - REACT_APP_KEYCLOAK_REALM=reports-realm
+        - REACT_APP_KEYCLOAK_CLIENT_ID=reports-frontend
     ports:
-      - "5433:5432"
+      - "3000:3000"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5050:5000"
+    env_file:
+      - environments
+    depends_on:
+      olap_db:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
   keycloak:
     image: quay.io/keycloak/keycloak:21.1
     environment:
@@ -28,15 +42,146 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - keycloak_db
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
+      keycloak_db:
+        condition: service_healthy
+
+  airflow-init:
+    image: apache/airflow:2.7.0
+    command: >
+      bash -c "
+        pip install --no-cache-dir -r /requirements.txt &&
+        airflow db migrate &&
+        airflow users create --username admin --firstname Firstname --lastname Lastname --role Admin --email admin@bionicpro.com --password admin
+      "
     environment:
-      REACT_APP_API_URL: http://localhost:8000
-      REACT_APP_KEYCLOAK_URL: http://localhost:8080
-      REACT_APP_KEYCLOAK_REALM: reports-realm
-      REACT_APP_KEYCLOAK_CLIENT_ID: reports-frontend
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow_db/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./airflow/requirements.txt:/requirements.txt
+    depends_on:
+      airflow_db:
+        condition: service_healthy
+
+  airflow-scheduler:
+    image: apache/airflow:2.7.0
+    command: >
+      bash -c "
+        pip install --no-cache-dir -r /requirements.txt &&
+        airflow scheduler
+      "
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow_db/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY:-}
+    env_file:
+      - environments
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./airflow/requirements.txt:/requirements.txt
+    depends_on:
+      airflow_db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_started
+
+  airflow-webserver:
+    image: apache/airflow:2.7.0
+    command: >
+      bash -c "
+        pip install --no-cache-dir -r /requirements.txt &&
+        airflow webserver
+      "
+    ports:
+      - "8090:8080"
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow_db/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY:-}
+    env_file:
+      - environments
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./airflow/requirements.txt:/requirements.txt
+    depends_on:
+      airflow_db:
+        condition: service_healthy
+      airflow-scheduler:
+        condition: service_started
+      airflow-init:
+        condition: service_started
+
+  keycloak_db:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: keycloak_db
+      POSTGRES_USER: keycloak_user
+      POSTGRES_PASSWORD: keycloak_password
+    healthcheck:
+      test: "pg_isready --dbname=keycloak_db --username=keycloak_user && psql --username=keycloak_user --list"
+      start_period: 3s
+      interval: 3s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "5433:5432"
+
+  crm_db: 
+    image: postgres:14
+    environment:
+      POSTGRES_DB: crm_db
+      POSTGRES_USER: crm_user
+      POSTGRES_PASSWORD: crm_password
+    volumes:
+        - ./crm-db:/docker-entrypoint-initdb.d
+    ports:
+      - "5444:5432"
+
+  telemetry_db:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: telemetry_db
+      POSTGRES_USER: telemetry_user
+      POSTGRES_PASSWORD: telemetry_password
+    volumes:
+        - ./telemetry-db:/docker-entrypoint-initdb.d
+    ports:
+      - "5455:5432"
+
+  airflow_db:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+    healthcheck:
+      test: "pg_isready --dbname=airflow --username=airflow && psql --username=airflow --list"
+      start_period: 3s
+      interval: 3s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "5466:5432"
+
+  olap_db:
+    image: clickhouse/clickhouse-server:latest
+    ports:
+      - "8123:8123"
+      - "9431:9000"
+    volumes:
+      - ./olap-db:/docker-entrypoint-initdb.d
+      - ./olap-db/users.xml:/etc/clickhouse-server/users.d/users.xml
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
